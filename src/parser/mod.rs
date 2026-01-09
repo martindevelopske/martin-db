@@ -1,5 +1,8 @@
-use serde_json::Value;
+use axum::extract::State;
 
+use crate::engine::Value;
+
+#[derive(Debug)]
 pub enum Statement {
     CreateTable {
         name: String,
@@ -40,6 +43,127 @@ fn tokenize(input: &str) -> Vec<String> {
         .map(|s| s.to_string())
         .collect()
 }
+
+pub fn parse(input: &str) -> Result<Statement, String> {
+    let tokens = tokenize(input);
+    if tokens.is_empty() {
+        return Err("Empty query".into());
+    }
+
+    let mut iter = tokens.iter().peekable();
+    let command = iter.next().unwrap().to_uppercase();
+
+    match command.as_str() {
+        "CREATE" => parse_create(&mut iter),
+        "INSERT" => parse_insert(&mut iter),
+        // "SELECT" => parse_select(&mut iter),
+        _ => Err(format!("Unknown command: {}", command)),
+    }
+}
+
+fn parse_create(
+    iter: &mut std::iter::Peekable<std::slice::Iter<String>>,
+) -> Result<Statement, String> {
+    if iter.next().map(|s| s.to_uppercase()) != Some("TABLE".to_string()) {
+        return Err("Expected TABLE after CREATE".into());
+    }
+
+    let name = iter.next().ok_or("Expected table name")?.clone();
+
+    if iter.next() != Some(&"(".to_string()) {
+        return Err("Expected '('".into());
+    }
+
+    let mut columns = Vec::new();
+    while let Some(token) = iter.next() {
+        if token == ")" {
+            break;
+        }
+        if token == "," {
+            continue;
+        }
+
+        let col_name = token.clone();
+        let data_type = iter.next().ok_or("Expected column type")?.to_uppercase();
+
+        let mut is_primary = false;
+        let mut is_unique = false;
+
+        while let Some(&next) = iter.peek() {
+            match next.to_uppercase().as_str() {
+                "PRIMARY" => {
+                    is_primary = true;
+                    iter.next();
+                }
+                "UNIQUE" => {
+                    is_unique = true;
+                    iter.next();
+                }
+                "," | ")" => break,
+                _ => {
+                    iter.next();
+                }
+            }
+        }
+
+        columns.push(ColumnDefinition {
+            name: col_name,
+            data_type,
+            is_primary,
+            is_unique,
+        });
+    }
+
+    Ok(Statement::CreateTable { name, columns })
+}
+fn parse_insert(
+    iter: &mut std::iter::Peekable<std::slice::Iter<String>>,
+) -> Result<Statement, String> {
+    if iter.next().map(|s| s.to_uppercase()) != Some("INTO".to_string()) {
+        return Err("Expected INTO after CREATE".into());
+    }
+
+    let name = iter.next().ok_or("Expected table name")?.clone();
+    if iter.next().map(|s| s.to_uppercase()) != Some("VALUES".to_string()) {
+        return Err("Expected VALUES after INTO".into());
+    }
+
+    if iter.next() != Some(&"(".to_string()) {
+        return Err("Expected '('".into());
+    }
+
+    let mut values = Vec::new();
+    while let Some(token) = iter.next() {
+        if token == ")" {
+            break;
+        }
+        if token == "," {
+            continue;
+        }
+
+        if let Ok(num) = token.parse::<i32>() {
+            values.push(Value::Integer(num));
+        } else {
+            values.push(Value::Text(token.trim_matches('\'').to_string()));
+        }
+    }
+
+    Ok(Statement::Insert {
+        table_name: name,
+        values,
+    })
+}
+//
+// fn parse_select(
+//     &mut iter: std::iter::Peekable<std::slice::Iter<String>>,
+// ) -> Result<Statement, String> {
+//     if iter.next().map(|s| s.to_uppercase()) != Some("FROM".to_string()) {
+//         return Err("Expected FROM ".into());
+//     }
+//
+//     let name = iter.next().ok_or("Expected table name")?.clone();
+//
+// }
 
 #[cfg(test)]
 mod tests {

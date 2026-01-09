@@ -1,3 +1,4 @@
+use martin_db::parser::{Statement, parse};
 use rustyline::{DefaultEditor, error::ReadlineError};
 
 fn main() -> anyhow::Result<()> {
@@ -9,7 +10,6 @@ fn main() -> anyhow::Result<()> {
         let readline = rl.readline("martin db>>");
         match readline {
             Ok(line) => {
-                //add history to file
                 if line.trim() == "exit" {
                     break;
                 }
@@ -21,7 +21,18 @@ fn main() -> anyhow::Result<()> {
                     continue;
                 }
 
-                println!("Welcome. You entered: {}", line);
+                let trimmed = line.trim();
+                match parse(trimmed) {
+                    Ok(statement) => {
+                        println!("Success! parser detected: {:?}", statement);
+                    }
+                    Err(e) => {
+                        println!("SQL error: {}", e);
+                    }
+                }
+
+                let _ = rl.add_history_entry(trimmed);
+                // println!("Welcome. You entered: {}", line);
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
             Err(err) => println!("Error: {:?}", err),
