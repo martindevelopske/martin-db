@@ -1,5 +1,3 @@
-use axum::extract::State;
-
 use crate::engine::Value;
 
 #[derive(Debug)]
@@ -153,21 +151,47 @@ fn parse_insert(
         values,
     })
 }
-//
-// fn parse_select(
-//     &mut iter: std::iter::Peekable<std::slice::Iter<String>>,
-// ) -> Result<Statement, String> {
-//     if iter.next().map(|s| s.to_uppercase()) != Some("FROM".to_string()) {
-//         return Err("Expected FROM ".into());
-//     }
-//
-//     let name = iter.next().ok_or("Expected table name")?.clone();
-//
-// }
+
+fn parse_select(
+    iter: &mut std::iter::Peekable<std::slice::Iter<String>>,
+) -> Result<Statement, String> {
+    let mut columns = Vec::new();
+    while let Some(token) = iter.next() {
+        if token.to_uppercase() == "FROM" {
+            break;
+        }
+        if token != "," {
+            columns.push(token.clone());
+        }
+    }
+
+    let table_name = iter.next().ok_or("Expected table name")?.clone();
+    let mut join = None;
+
+    if let Some(token) = iter.next() {
+        let join_table = iter.next().ok_or("Expected join table")?.clone();
+        iter.next();
+        let left = iter.next().ok_or("Expected left col")?.clone();
+        iter.next();
+        let right = iter.next().ok_or("Expected right col")?.clone();
+
+        join = Some(JoinDefinition {
+            table_name: join_table,
+            left_column: left,
+            right_column: right,
+        });
+    }
+
+    Ok(Statement::Select {
+        table_name: table_name,
+        columns: columns,
+        join: join,
+    })
+}
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::tokenize;
+    use crate::parser::{self, parse, tokenize};
 
     #[test]
     pub fn test_tokenize() {
@@ -175,5 +199,14 @@ mod tests {
 
         let res = tokenize(input);
         println!("{:?}", res);
+    }
+
+    #[test]
+    pub fn test_parser() {
+        let input = "CREATE TABLE users (id INT PRIMARY, name TEXT)";
+        match parse(input) {
+            Ok(smt) => println!("Parsed: {:?}", smt),
+            Err(e) => println!("Error: {}", e),
+        }
     }
 }

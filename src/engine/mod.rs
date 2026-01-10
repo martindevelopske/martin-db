@@ -75,11 +75,31 @@ impl Table {
         self.rows.push(row);
         Ok(())
     }
+
+    pub fn rebuild_indexes(&mut self) {
+        self.indexes.clear();
+
+        //init empty sets for columns that need indexing
+        for (i, col) in self.columns.iter().enumerate() {
+            if col.is_primary || col.is_unique {
+                self.indexes.insert(i, std::collections::HashSet::new());
+            }
+        }
+
+        //populate sets with existing row data
+        for row in &self.rows {
+            for (i, value) in row.iter().enumerate() {
+                if let Some(index) = self.indexes.get_mut(&i) {
+                    index.insert(value.clone());
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Database {
-    tables: HashMap<String, Table>,
+    pub tables: HashMap<String, Table>,
 }
 
 impl Database {

@@ -24,3 +24,6 @@ target
 # Added by cargo
 
 /target
+
+# ignore the database.json file , let that be local
+database.json
