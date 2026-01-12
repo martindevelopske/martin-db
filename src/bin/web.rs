@@ -130,6 +130,7 @@ async fn ui_handler() -> Html<&'static str> {
         <div class="container">
             <h1>Web Interface</h1>
             <p>Run SQL queries against my Rust DB:</p>
+            <p>Note: Do not include the trailing semicolon(;) after query. </p>
             <input type="text" id="sqlInput" placeholder="SELECT * FROM users..." value="SELECT * FROM devs JOIN teams ON team_id = id">
             <button onclick="runQuery()">Execute</button>
             <div id="error" class="error"></div>
