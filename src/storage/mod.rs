@@ -3,8 +3,10 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
+/// The filename where the database is persisted.
 pub const DB_FILE: &str = "database.json";
 
+/// Serializes the current Database state into a JSON file on disk.
 pub fn save_to_disk(db: &Database) -> Result<(), DbError> {
     let json = serde_json::to_string_pretty(db)
         .map_err(|err| DbError::IoError(format!("Serialization failed: {}", err)))?;
@@ -17,6 +19,8 @@ pub fn save_to_disk(db: &Database) -> Result<(), DbError> {
 
     Ok(())
 }
+
+/// Loads the Database from disk and triggers the index reconstruction process.
 pub fn load_from_disk() -> Result<Database, DbError> {
     if !Path::new(DB_FILE).exists() {
         return Ok(Database::new());

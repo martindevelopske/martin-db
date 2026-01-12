@@ -1,5 +1,6 @@
 use crate::engine::Value;
 
+/// The structure resulting from a successfully parsed SQL string.
 #[derive(Debug)]
 pub enum Statement {
     CreateTable {
@@ -17,6 +18,7 @@ pub enum Statement {
     },
 }
 
+/// Metadata for creating a new column via SQL.
 #[derive(Debug)]
 pub struct ColumnDefinition {
     pub name: String,
@@ -25,6 +27,7 @@ pub struct ColumnDefinition {
     pub is_unique: bool,
 }
 
+/// Metadata for performing an INNER JOIN.
 #[derive(Debug)]
 pub struct JoinDefinition {
     pub table_name: String,
@@ -32,6 +35,7 @@ pub struct JoinDefinition {
     pub right_column: String,
 }
 
+/// Splits the raw SQL string into tokens while handling parentheses and commas.
 fn tokenize(input: &str) -> Vec<String> {
     input
         .replace('(', " ( ")
@@ -42,6 +46,7 @@ fn tokenize(input: &str) -> Vec<String> {
         .collect()
 }
 
+/// Entry point for the SQL parser. Converts raw text into a Statement.
 pub fn parse(input: &str) -> Result<Statement, String> {
     let tokens = tokenize(input);
     if tokens.is_empty() {
@@ -54,11 +59,21 @@ pub fn parse(input: &str) -> Result<Statement, String> {
     match command.as_str() {
         "CREATE" => parse_create(&mut iter),
         "INSERT" => parse_insert(&mut iter),
-        // "SELECT" => parse_select(&mut iter),
+        "SELECT" => parse_select(&mut iter),
         _ => Err(format!("Unknown command: {}", command)),
     }
 }
 
+/// Internal parser logic for the `CREATE TABLE` statement.
+///
+/// ### How it works:
+/// 1. **Keyword Verification**: Validates that the token following `CREATE` is exactly `TABLE`.
+/// 2. **Identifier Extraction**: Captures the next token as the table name.
+/// 3. **Column Loop**: Enters a loop to parse everything inside the parentheses `(...)`.
+/// 4. **Flag Peeking**: For every column, it looks for the name and type. It then uses `iter.peek()`
+///    to check for optional constraints like `PRIMARY` or `UNIQUE` without consuming
+///    the next required tokens (like commas or closing parentheses).
+/// 5. **Validation**: Ensures that the statement is properly closed with a `)`.
 fn parse_create(
     iter: &mut std::iter::Peekable<std::slice::Iter<String>>,
 ) -> Result<Statement, String> {
@@ -114,6 +129,17 @@ fn parse_create(
 
     Ok(Statement::CreateTable { name, columns })
 }
+
+/// Internal parser logic for the `INSERT INTO` statement.
+///
+/// ### How it works:
+/// 1. **Context Parsing**: Matches the boilerplate SQL syntax `INTO <table_name> VALUES`.
+/// 2. **Type Inference**: As it iterates through the values inside `(...)`, it attempts to
+///    categorize data types on the fly:
+///    - If a token can be parsed as a number (`token.parse::<i32>()`), it is stored as `Value::Integer`.
+///    - Otherwise, it is treated as a string and stored as `Value::Text`.
+/// 3. **Sanitization**: It strips single quotes `'` from text values to ensure
+///    the database stores the literal data, not the SQL formatting.
 fn parse_insert(
     iter: &mut std::iter::Peekable<std::slice::Iter<String>>,
 ) -> Result<Statement, String> {
@@ -152,6 +178,19 @@ fn parse_insert(
     })
 }
 
+/// Internal parser logic for the `SELECT` statement, including JOIN detection.
+///
+/// ### How it works:
+/// 1. **Column Selection**: Collects all tokens between `SELECT` and `FROM`. This supports
+///    both `*` (wildcard) and specific column lists (e.g., `id, name`).
+/// 2. **Source Table**: Identifies the primary table to query.
+/// 3. **Join Detection**: After the table name, it "peeks" ahead. If the next token is `JOIN`,
+///    it switches to "Join Mode":
+///    - It captures the secondary table name.
+///    - It skips the `ON` keyword.
+///    - It extracts the `left_column` and `right_column` used for the equality check.
+/// 4. **Encapsulation**: Returns a `Statement::Select` containing a `JoinDefinition`
+///    struct if a join was detected, otherwise `None`.
 fn parse_select(
     iter: &mut std::iter::Peekable<std::slice::Iter<String>>,
 ) -> Result<Statement, String> {

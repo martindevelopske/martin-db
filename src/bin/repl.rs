@@ -1,7 +1,9 @@
 use martin_db::{
-    parser::{Statement, parse},
+    engine::ExecutionResult,
+    parser::parse,
     storage::{load_from_disk, save_to_disk},
 };
+use prettytable::{Cell, Row, Table};
 use rustyline::{DefaultEditor, error::ReadlineError};
 
 fn main() -> anyhow::Result<()> {
@@ -15,58 +17,56 @@ fn main() -> anyhow::Result<()> {
     println!("Type 'exit' to quit.");
 
     loop {
-        let readline = rl.readline("martin db>>");
+        let readline = rl.readline("sql> ");
         match readline {
             Ok(line) => {
-                if line.trim() == "exit" {
+                let trimmed = line.trim();
+                if trimmed == "exit" {
                     break;
                 }
-                if line.trim() == "history" {
-                    //read history maybe from a file or something
-                    continue;
-                }
-                if line.trim().is_empty() {
-                    continue;
-                }
 
-                let trimmed = line.trim();
                 match parse(trimmed) {
-                    Ok(statement) => {
-                        match statement {
-                            Statement::CreateTable { name, columns } => {
-                                //convert column defs into the engine column
-                                let engine_colums = columns
-                                    .into_iter()
-                                    .map(|c| martin_db::engine::Column {
-                                        name: c.name,
-                                        data_type: c.data_type,
-                                        is_primary: c.is_primary,
-                                        is_unique: c.is_unique,
-                                    })
-                                    .collect();
+                    Ok(stmt) => {
+                        // Check if it's a mutating query to save later
+                        let is_mutation = matches!(
+                            stmt,
+                            martin_db::parser::Statement::CreateTable { .. }
+                                | martin_db::parser::Statement::Insert { .. }
+                        );
 
-                                if let Err(e) = db.create_table(name, engine_colums) {
-                                    println!("Error: {}", e);
-                                } else {
-                                    println!("Table created.");
+                        match db.execute(stmt) {
+                            Ok(result) => {
+                                match result {
+                                    ExecutionResult::Message(msg) => println!("{}", msg),
+                                    ExecutionResult::Data { headers, rows } => {
+                                        let mut table = Table::new();
+                                        table.add_row(Row::new(
+                                            headers.into_iter().map(|s| Cell::new(&s)).collect(),
+                                        ));
+                                        for r in rows {
+                                            table.add_row(Row::new(
+                                                r.into_iter()
+                                                    .map(|v| Cell::new(&format!("{:?}", v)))
+                                                    .collect(),
+                                            ));
+                                        }
+                                        table.printstd();
+                                    }
+                                }
+                                if is_mutation {
                                     save_to_disk(&db)?;
                                 }
                             }
-                            _ => println!("Statement Parsed: {:?}", statement),
+                            Err(e) => println!("Execution Error: {}", e),
                         }
                     }
-                    Err(e) => {
-                        println!("SQL error: {}", e);
-                    }
+                    Err(e) => println!("Syntax Error: {}", e),
                 }
-
                 let _ = rl.add_history_entry(trimmed);
-                // println!("Welcome. You entered: {}", line);
             }
             Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => break,
-            Err(err) => println!("Error: {:?}", err),
+            _ => (),
         }
     }
-
     Ok(())
 }

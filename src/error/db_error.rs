@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+/// Represents all possible errors that can occur within the RDBMS.
 #[derive(Error, Debug)]
 pub enum DbError {
     #[error("Table '{0}' already exists")]
